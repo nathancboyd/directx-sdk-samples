@@ -11,6 +11,7 @@
 #include "DXUTsettingsdlg.h"
 #include "SDKmisc.h"
 #include "skybox11.h"
+//#include "dxgi1_6.h"
 
 #pragma warning( disable : 4100 )
 
@@ -28,7 +29,8 @@ enum POSTPROCESS_MODE
 POSTPROCESS_MODE g_ePostProcessMode = PM_COMPUTE_SHADER;// Stores which path is currently used for post-processing
 
 CDXUTDialogResourceManager  g_DialogResourceManager;    // Manager for shared resources of dialogs
-CModelViewerCamera          g_Camera;                   // A model viewing camera
+CFirstPersonCamera			g_Camera;
+//CModelViewerCamera          g_Camera;                   // A model viewing camera
 CD3DSettingsDlg             g_D3DSettingsDlg;           // Device settings dialog
 CDXUTDialog                 g_HUD;                      // Dialog for standard controls
 CDXUTDialog                 g_SampleUI;                 // Dialog for sample specific controls
@@ -71,6 +73,8 @@ ID3D11InputLayout*          g_pQuadLayout = nullptr;
 ID3D11VertexShader*         g_pQuadVS = nullptr;
 ID3D11PixelShader*          g_pFinalPassPS = nullptr;
 ID3D11PixelShader*          g_pFinalPassForCPUReductionPS = nullptr;
+
+//DXGI_OUTPUT_DESC1            g_outputDesc; //descriptor of current monitor
 
 // Constant buffer layout for transferring data to the CS
 struct CB_CS
@@ -137,6 +141,7 @@ bool                        g_bBloom = false;               // Bloom effect on/o
 bool                        g_bFullScrBlur = false;         // Full screen blur on/off
 bool                        g_bPostProcessON = true;        // All post-processing effect on/off
 bool                        g_bCPUReduction = false;        // CPU reduction on/off
+int							g_iBrightness = 0;
 
 float                       g_fCPUReduceResult = 0;         // CPU reduction result
 
@@ -144,6 +149,7 @@ CDXUTStatic*                g_pStaticTech = nullptr;           // Sample specifi
 CDXUTComboBox*              g_pComboBoxTech = nullptr;
 CDXUTCheckBox*              g_pCheckBloom = nullptr;
 CDXUTCheckBox*              g_pCheckScrBlur = nullptr;
+CDXUTSlider*				g_pSliderBrightness = nullptr;
 
 ID3D11Texture2D*            g_apTexToneMap11[NUM_TONEMAP_TEXTURES];     // Tone mapping calculation textures used in PS path
 ID3D11ShaderResourceView*   g_apTexToneMapRV11[NUM_TONEMAP_TEXTURES];
@@ -174,6 +180,7 @@ ID3D11SamplerState*         g_pSampleStateLinear = nullptr;
 #define IDC_BLOOM               6
 #define IDC_POSTPROCESSON       7
 #define IDC_SCREENBLUR          8
+#define IDC_BRIGHTNESS			9
 
 //--------------------------------------------------------------------------------------
 // Forward declarations 
@@ -259,6 +266,9 @@ void InitApp()
     g_SampleUI.AddCheckBox( IDC_BLOOM, L"Show (B)loom", 0, 195, 140, 18, g_bBloom, 'B', false, &g_pCheckBloom );
     g_SampleUI.AddCheckBox( IDC_SCREENBLUR, L"Full (S)creen Blur", 0, 195+20, 140, 18, g_bFullScrBlur, 'S', false, &g_pCheckScrBlur );
 
+	g_SampleUI.AddSlider(IDC_BRIGHTNESS, 30, -200, 140, 18, -10, 10, g_iBrightness,
+		true, &g_pSliderBrightness);
+
     g_SampleUI.SetCallback( OnGUIEvent ); 
 }
 
@@ -276,7 +286,10 @@ bool CALLBACK ModifyDeviceSettings( DXUTDeviceSettings* pDeviceSettings, void* p
     // then it can be bound as the output resource of the CS
     // However, as CS4.0 cannot output to textures, this is taken out when the sample has been ported to CS4.0
     //pDeviceSettings->d3d11.sd.BufferUsage |= DXGI_USAGE_UNORDERED_ACCESS;
-    return true;
+	pDeviceSettings->d3d11.sd.BufferDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;	// use fp16 for full HDR
+	pDeviceSettings->d3d11.SyncInterval = 1;								// force vsync on by default
+//	pDeviceSettings->d3d11.sd.Windowed = FALSE;
+	return true;
 }
 
 //--------------------------------------------------------------------------------------
@@ -344,14 +357,17 @@ void CALLBACK OnGUIEvent( UINT nEvent, int nControlID, CDXUTControl* pControl, v
     switch( nControlID )
     {
         case IDC_TOGGLEFULLSCREEN:
-            DXUTToggleFullScreen(); break;
+            DXUTToggleFullScreen();
+			break;
         case IDC_TOGGLEREF:
-            DXUTToggleREF(); break;
+            DXUTToggleREF();
+			break;
         case IDC_CHANGEDEVICE:
-            g_D3DSettingsDlg.SetActive( !g_D3DSettingsDlg.IsActive() ); break;
-
+            g_D3DSettingsDlg.SetActive( !g_D3DSettingsDlg.IsActive() );
+			break;
         case IDC_BLOOM:
-            g_bBloom = !g_bBloom; break;
+            g_bBloom = !g_bBloom;
+			break;
         case IDC_POSTPROCESSON:
             g_bPostProcessON = !g_bPostProcessON; 
             g_pStaticTech->SetEnabled( g_bPostProcessON );
@@ -362,12 +378,13 @@ void CALLBACK OnGUIEvent( UINT nEvent, int nControlID, CDXUTControl* pControl, v
         case IDC_SCREENBLUR:
             g_bFullScrBlur = !g_bFullScrBlur;
             break;
-
+		case IDC_BRIGHTNESS:
+			g_iBrightness = g_pSliderBrightness->GetValue();
+			break;
         case IDC_POSTPROCESS_MODE:
         {
             CDXUTComboBox* pComboBox = ( CDXUTComboBox* )pControl;
             g_ePostProcessMode = ( POSTPROCESS_MODE )( int )PtrToInt( pComboBox->GetSelectedData() );
-
             break;
         }        
     }
@@ -579,6 +596,35 @@ HRESULT CALLBACK OnD3D11CreateDevice( ID3D11Device* pd3dDevice, const DXGI_SURFA
     //XMFLOAT3 vecEye( 0.0f, 0.5f, -3.0f );
     static const XMVECTORF32 s_vecEye = { 0.0f, -10.5f, -3.0f, 0.f };
     g_Camera.SetViewParams( s_vecEye, g_XMZero );
+
+	//trying to get monitor stats
+	/*
+	//auto d3dDevice = m_deviceResources->GetD3DDevice();
+
+	IDXGIDevice3 *pdxgiDevice;
+	pd3dDevice->QueryInterface(IID_PPV_ARGS(&pdxgiDevice));
+
+	IDXGIAdapter *pdxgiAdapter;
+	pdxgiDevice->GetAdapter(&pdxgiAdapter));
+
+	IDXGIFactory3 *pdxgiFactory;
+	pdxgiAdapter->GetParent(IID_PPV_ARGS(&pdxgiFactory));
+
+	if (!pdxgiFactory->IsCurrent())
+	{
+		CreateDXGIFactory1(IID_PPV_ARGS(&pdxgiFactory));
+	}
+
+	// Get information about the display we are presenting to.
+	IDXGIOutput *output;
+	auto sc = m_deviceResources->GetSwapChain();
+	sc->GetContainingOutput(&output);
+
+	IDXGIOutput6 *output6;
+	output.As(&output6);
+
+	output6->GetDesc1(&m_outputDesc);
+	*/
 
     return S_OK;
 }
@@ -867,7 +913,7 @@ HRESULT CALLBACK OnD3D11ResizedSwapChain( ID3D11Device* pd3dDevice, IDXGISwapCha
     // Setup the camera's projection parameters    
     float fAspectRatio = pBackBufferSurfaceDesc->Width / ( FLOAT )pBackBufferSurfaceDesc->Height;
     g_Camera.SetProjParams( XM_PI / 4, fAspectRatio, 0.1f, 5000.0f );
-    g_Camera.SetWindow( pBackBufferSurfaceDesc->Width, pBackBufferSurfaceDesc->Height );
+    //g_Camera.SetWindow( pBackBufferSurfaceDesc->Width, pBackBufferSurfaceDesc->Height );
 
     g_HUD.SetLocation( pBackBufferSurfaceDesc->Width - 170, 0 );
     g_HUD.SetSize( 170, 170 );
@@ -1235,7 +1281,7 @@ ID3D11Buffer* CreateAndCopyToDebugBuf( ID3D11Device* pDevice, ID3D11DeviceContex
 
 // Define this to do full pixel reduction.
 // If this is on, the same flag must also be on in ReduceTo1DCS.hlsl.
-//#define CS_FULL_PIXEL_REDUCITON 
+//#define CS_FULL_PIXEL_REDUCTION 
 
 //--------------------------------------------------------------------------------------
 // Measure the average luminance of the rendered skybox in CS path
@@ -1244,7 +1290,7 @@ HRESULT MeasureLuminanceCS11( ID3D11DeviceContext* pd3dImmediateContext, const D
 {
     HRESULT hr;
     
-#ifdef CS_FULL_PIXEL_REDUCITON
+#ifdef CS_FULL_PIXEL_REDUCTION
     int dimx = int(ceil(pBackBufferDesc->Width/8.0f));
     dimx = int(ceil(dimx/2.0f));
     int dimy = int(ceil(pBackBufferDesc->Height/8.0f));
@@ -1361,7 +1407,7 @@ HRESULT BloomCS11( ID3D11DeviceContext* pd3dImmediateContext, const DXGI_SURFACE
     CB_filter cbFilter;
     GetSampleWeights_D3D11( cbFilter.avSampleWeights, 3.0f, 1.25f );
     cbFilter.uf.outputwidth = pBackBufferDesc->Width / 8;    
-#ifdef CS_FULL_PIXEL_REDUCITON
+#ifdef CS_FULL_PIXEL_REDUCTION
     cbFilter.uf.finverse = 1.0f / (pBackBufferDesc->Width*pBackBufferDesc->Height);
 #else
     cbFilter.uf.finverse = 1.0f / (ToneMappingTexSize*ToneMappingTexSize);
@@ -1498,7 +1544,7 @@ void CALLBACK OnD3D11FrameRender( ID3D11Device* pd3dDevice, ID3D11DeviceContext*
     XMMATRIX mView = g_Camera.GetViewMatrix();
     XMMATRIX mProj = g_Camera.GetProjMatrix();
     
-    XMMATRIX mWorldViewProjection = mWorld * mView * mProj;
+    XMMATRIX mWorldViewProjection = /*mWorld * */mView * mProj;
 
     g_Skybox.D3D11Render( mWorldViewProjection, pd3dImmediateContext );
 
@@ -1565,10 +1611,10 @@ void CALLBACK OnD3D11FrameRender( ID3D11Device* pd3dDevice, ID3D11DeviceContext*
                 D3D11_MAPPED_SUBRESOURCE MappedResource;            
                 V( pd3dImmediateContext->Map( g_pcbCS, 0, D3D11_MAP_WRITE_DISCARD, 0, &MappedResource ) );
                 auto pcbCS = reinterpret_cast<CB_PS*>( MappedResource.pData );
-#ifdef CS_FULL_PIXEL_REDUCITON
-                pcbCS->param[0] = 1.0f / (pBackBufferDesc->Width*pBackBufferDesc->Height);
+#ifdef CS_FULL_PIXEL_REDUCTION
+                pcbCS->param[0] = powf(1.175f, -1.0f*g_iBrightness) / (pBackBufferDesc->Width*pBackBufferDesc->Height);//exposure
 #else
-                pcbCS->param[0] = 1.0f / (ToneMappingTexSize*ToneMappingTexSize);
+                pcbCS->param[0] = powf(1.175f, -1.0f*g_iBrightness) / (ToneMappingTexSize*ToneMappingTexSize);
 #endif
                 pd3dImmediateContext->Unmap( g_pcbCS, 0 );
                 ID3D11Buffer* ppCB[1] = { g_pcbCS };
@@ -1586,7 +1632,7 @@ void CALLBACK OnD3D11FrameRender( ID3D11Device* pd3dDevice, ID3D11DeviceContext*
                 D3D11_MAPPED_SUBRESOURCE MappedResource;            
                 V( pd3dImmediateContext->Map( g_pcbCS, 0, D3D11_MAP_WRITE_DISCARD, 0, &MappedResource ) );
                 auto pcbCS = reinterpret_cast<CB_PS*>( MappedResource.pData );
-#ifdef CS_FULL_PIXEL_REDUCITON
+#ifdef CS_FULL_PIXEL_REDUCTION
                 pcbCS->param[0] = g_fCPUReduceResult / (pBackBufferDesc->Width*pBackBufferDesc->Height);
 #else
                 pcbCS->param[0] = g_fCPUReduceResult / (ToneMappingTexSize*ToneMappingTexSize);

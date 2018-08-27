@@ -6,6 +6,7 @@
 // 
 // Copyright (c) Microsoft Corporation. All rights reserved.
 //--------------------------------------------------------------------------------------
+
 struct QuadVS_Input
 {
     float4 Pos : POSITION;
@@ -34,8 +35,10 @@ SamplerState PointSampler : register (s0);
 SamplerState LinearSampler : register (s1);
 
 
-static const float  MIDDLE_GRAY = 0.72f;
-static const float  LUM_WHITE = 1.5f;
+//static const float  MIDDLE_GRAY = .72f;
+//static const float  LUM_WHITE = 1.5f;
+static const float  MIDDLE_GRAY = 0.18f;
+static const float  LUM_WHITE = .8f;
 
 cbuffer cbPS : register( b0 )
 {
@@ -45,33 +48,34 @@ cbuffer cbPS : register( b0 )
 float4 PSFinalPass( QuadVS_Output Input ) : SV_TARGET
 {
     float4 vColor = tex.Sample( PointSampler, Input.Tex );
-    float fLum = lum[0]*g_param.x;
+    float fAverageLuminance = lum[0]*g_param.x;
     float3 vBloom = bloom.Sample( LinearSampler, Input.Tex );
 
     // Tone mapping
-    vColor.rgb *= MIDDLE_GRAY / (fLum + 0.001f);
+    vColor.rgb *= MIDDLE_GRAY / (fAverageLuminance + 0.001f);
     vColor.rgb *= (1.0f + vColor/LUM_WHITE);
     vColor.rgb /= (1.0f + vColor);
     
     vColor.rgb += 0.6f * vBloom;
-    vColor.a = 1.0f;
-
-    return vColor;
+	vColor.rgb *= 8.0f;
+	
+	vColor.a = 1.0f;
+	return vColor;
 }
 
 float4 PSFinalPassForCPUReduction( QuadVS_Output Input ) : SV_TARGET
 {
     float4 vColor = tex.Sample( PointSampler, Input.Tex );
-    float fLum = g_param.x;
+    float fAverageLuminance = g_param.x;
     float3 vBloom = bloom.Sample( LinearSampler, Input.Tex );
 
     // Tone mapping
-    vColor.rgb *= MIDDLE_GRAY / (fLum + 0.001f);
+    vColor.rgb *= MIDDLE_GRAY / (fAverageLuminance + 0.001f);
     vColor.rgb *= (1.0f + vColor/LUM_WHITE);
     vColor.rgb /= (1.0f + vColor);
     
     vColor.rgb += 0.6f * vBloom;
     vColor.a = 1.0f;
     
-    return vColor;
+    return vColor*4.0f;
 }
