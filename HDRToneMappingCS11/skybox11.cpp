@@ -21,20 +21,26 @@ const D3D11_INPUT_ELEMENT_DESC g_aVertexLayout[] =
     { "POSITION",  0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
 };
 
+bool Global::g_bSkyShapeIsCube;
 
 //--------------------------------------------------------------------------------------
 CSkybox11::CSkybox11() :
-    m_pEnvironmentMap11(nullptr),
-    m_pEnvironmentRV11(nullptr),
-     m_pd3dDevice11(nullptr),
-    m_pVertexShader(nullptr),
-    m_pPixelShader(nullptr),
-    m_pSam(nullptr),
-    m_pVertexLayout11(nullptr),
-    m_pcbVSPerObject(nullptr),
-    m_pVB11(nullptr),
-    m_pDepthStencilState11(nullptr),
-    m_fSize(1.0f)
+	m_pEnvironmentMap11(nullptr),
+	m_pEnvironmentRV11(nullptr),
+	m_pd3dDevice11(nullptr),
+	m_pVertexShader(nullptr),
+	m_pPixelShader(nullptr),
+	m_pVertexShaderCube(nullptr),
+	m_pPixelShaderCube(nullptr),
+	m_pSam(nullptr),
+	m_pVertexLayout11(nullptr),
+	m_pVertexLayoutCube11(nullptr),
+	m_pcbVSPerObject(nullptr),
+	m_pVB11(nullptr),
+	m_pDepthStencilState11(nullptr),
+	
+	m_fSize(1.0f)
+	
 {
 }
 
@@ -61,7 +67,7 @@ HRESULT CSkybox11::OnD3D11CreateDevice( ID3D11Device* pd3dDevice, float fSize,
     V_RETURN( pd3dDevice->CreatePixelShader( pBlobPS->GetBufferPointer(), pBlobPS->GetBufferSize(), nullptr, &m_pPixelShader ) );
 
     DXUT_SetDebugName( m_pVertexShader, "SkyboxVS" );
-    DXUT_SetDebugName( m_pPixelShader, "SkyboxPS" );
+	DXUT_SetDebugName(m_pPixelShader, "SkyboxPS");
 
     // Create an input layout
     V_RETURN( pd3dDevice->CreateInputLayout( g_aVertexLayout, 1, pBlobVS->GetBufferPointer(),
@@ -70,6 +76,28 @@ HRESULT CSkybox11::OnD3D11CreateDevice( ID3D11Device* pd3dDevice, float fSize,
 
     SAFE_RELEASE( pBlobVS );
     SAFE_RELEASE( pBlobPS );
+
+	
+	//skybox cube
+	// Create the shaders
+	V_RETURN(DXUTCompileFromFile(L"skybox11cube.hlsl", nullptr, "SkyboxVScube", "vs_4_0", D3DCOMPILE_ENABLE_STRICTNESS, 0, &pBlobVS));
+	V_RETURN(DXUTCompileFromFile(L"skybox11cube.hlsl", nullptr, "SkyboxPScube", "ps_4_0", D3DCOMPILE_ENABLE_STRICTNESS, 0, &pBlobPS));
+
+	V_RETURN(pd3dDevice->CreateVertexShader(pBlobVS->GetBufferPointer(), pBlobVS->GetBufferSize(), nullptr, &m_pVertexShaderCube));
+	V_RETURN(pd3dDevice->CreatePixelShader(pBlobPS->GetBufferPointer(), pBlobPS->GetBufferSize(), nullptr, &m_pPixelShaderCube));
+
+	DXUT_SetDebugName(m_pVertexShaderCube, "SkyboxVScube");
+	DXUT_SetDebugName(m_pPixelShaderCube, "SkyboxPScube");
+
+	// Create an input layout
+	V_RETURN(pd3dDevice->CreateInputLayout(g_aVertexLayout, 1, pBlobVS->GetBufferPointer(),
+										   pBlobVS->GetBufferSize(), &m_pVertexLayoutCube11));
+	DXUT_SetDebugName(m_pVertexLayoutCube11, "Secondary");
+
+	SAFE_RELEASE(pBlobVS);
+	SAFE_RELEASE(pBlobPS);
+
+
 
     // Query support for linear filtering on DXGI_FORMAT_R32G32B32A32
     UINT FormatSupport = 0;
@@ -168,8 +196,16 @@ void CSkybox11::D3D11Render( CXMMATRIX mWorldViewProj, ID3D11DeviceContext* pd3d
     pd3dImmediateContext->IASetIndexBuffer( nullptr, DXGI_FORMAT_R32_UINT, 0 );
     pd3dImmediateContext->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP );
 
-    pd3dImmediateContext->VSSetShader( m_pVertexShader, nullptr, 0 );
-    pd3dImmediateContext->PSSetShader( m_pPixelShader, nullptr, 0 );
+	if (Global::g_bSkyShapeIsCube)
+	{
+		pd3dImmediateContext->VSSetShader(m_pVertexShaderCube, nullptr, 0);
+		pd3dImmediateContext->PSSetShader(m_pPixelShaderCube, nullptr, 0);
+	}
+	else
+	{
+		pd3dImmediateContext->VSSetShader(m_pVertexShader, nullptr, 0);
+		pd3dImmediateContext->PSSetShader(m_pPixelShader, nullptr, 0);
+	}
 
     D3D11_MAPPED_SUBRESOURCE MappedResource;
     V( pd3dImmediateContext->Map( m_pcbVSPerObject, 0, D3D11_MAP_WRITE_DISCARD, 0, &MappedResource ) );
@@ -210,6 +246,9 @@ void CSkybox11::OnD3D11DestroyDevice()
     SAFE_RELEASE( m_pVertexShader );
     SAFE_RELEASE( m_pPixelShader );
     SAFE_RELEASE( m_pVertexLayout11 );
+	SAFE_RELEASE(m_pVertexShaderCube);
+	SAFE_RELEASE(m_pPixelShaderCube);
+	SAFE_RELEASE(m_pVertexLayoutCube11)
     SAFE_RELEASE( m_pcbVSPerObject );
     SAFE_RELEASE( m_pDepthStencilState11 );
 }

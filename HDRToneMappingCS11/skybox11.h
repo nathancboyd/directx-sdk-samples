@@ -7,10 +7,16 @@
 //-----------------------------------------------------------------------------
 #pragma once
 
+struct Global {
+	static bool g_bSkyShapeIsCube;
+};
+
 class CSkybox11
 {
+
 public:
     CSkybox11();
+
 
     HRESULT CALLBACK OnD3D11CreateDevice( ID3D11Device* pd3dDevice, float fSize,
         ID3D11Texture2D* pCubeTexture, ID3D11ShaderResourceView* pCubeRV );
@@ -44,11 +50,14 @@ protected:
     ID3D11Device* m_pd3dDevice11;
     ID3D11VertexShader* m_pVertexShader;
     ID3D11PixelShader* m_pPixelShader;
+	ID3D11VertexShader* m_pVertexShaderCube;
+	ID3D11PixelShader*	m_pPixelShaderCube;
     ID3D11SamplerState* m_pSam;
     ID3D11InputLayout* m_pVertexLayout11;
+	ID3D11InputLayout* m_pVertexLayoutCube11;
     ID3D11Buffer* m_pcbVSPerObject;
     ID3D11Buffer* m_pVB11;
-    ID3D11DepthStencilState* m_pDepthStencilState11;
-
+	ID3D11DepthStencilState* m_pDepthStencilState11;
+	
     float m_fSize;
 };

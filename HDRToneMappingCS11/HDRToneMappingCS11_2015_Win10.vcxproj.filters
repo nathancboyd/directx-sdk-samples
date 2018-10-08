@@ -14,6 +14,12 @@
     <None Include="..\..\DXUT11\Optional\directx.ico">
       <Filter>Resource Files</Filter>
     </None>
+    <None Include="skybox11.hlsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="skybox11cube.hlsl">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="HDRToneMappingCS11.cpp" />
@@ -42,9 +48,6 @@
     <None Include="ReduceToSingleCS.hlsl">
       <Filter>Shaders</Filter>
     </None>
-    <None Include="skybox11.hlsl">
-      <Filter>Shaders</Filter>
-    </None>
   </ItemGroup>
   <ItemGroup>
     <CLInclude Include="resource.h">
@@ -53,7 +56,5 @@
     <ResourceCompile Include="HDRToneMappingCS11.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
-  </ItemGroup>
-  <ItemGroup>
   </ItemGroup>
 </Project>

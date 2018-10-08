@@ -51,6 +51,8 @@ float4 PSFinalPass( QuadVS_Output Input ) : SV_TARGET
     float fAverageLuminance = lum[0]*g_param.x;
     float3 vBloom = bloom.Sample( LinearSampler, Input.Tex );
 
+
+
     // Tone mapping
     vColor.rgb *= MIDDLE_GRAY / (fAverageLuminance + 0.001f);
     vColor.rgb *= (1.0f + vColor/LUM_WHITE);

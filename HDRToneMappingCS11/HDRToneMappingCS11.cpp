@@ -142,6 +142,7 @@ bool                        g_bFullScrBlur = false;         // Full screen blur 
 bool                        g_bPostProcessON = true;        // All post-processing effect on/off
 bool                        g_bCPUReduction = false;        // CPU reduction on/off
 int							g_iBrightness = 0;
+bool                  g_bSkyShape;	//false for sphere, true for cube
 
 float                       g_fCPUReduceResult = 0;         // CPU reduction result
 
@@ -150,6 +151,8 @@ CDXUTComboBox*              g_pComboBoxTech = nullptr;
 CDXUTCheckBox*              g_pCheckBloom = nullptr;
 CDXUTCheckBox*              g_pCheckScrBlur = nullptr;
 CDXUTSlider*				g_pSliderBrightness = nullptr;
+CDXUTCheckBox*              g_pSkyShape = nullptr;
+
 
 ID3D11Texture2D*            g_apTexToneMap11[NUM_TONEMAP_TEXTURES];     // Tone mapping calculation textures used in PS path
 ID3D11ShaderResourceView*   g_apTexToneMapRV11[NUM_TONEMAP_TEXTURES];
@@ -181,6 +184,7 @@ ID3D11SamplerState*         g_pSampleStateLinear = nullptr;
 #define IDC_POSTPROCESSON       7
 #define IDC_SCREENBLUR          8
 #define IDC_BRIGHTNESS			9
+#define IDC_SKYSHAPE			10
 
 //--------------------------------------------------------------------------------------
 // Forward declarations 
@@ -268,6 +272,8 @@ void InitApp()
 
 	g_SampleUI.AddSlider(IDC_BRIGHTNESS, 30, -200, 140, 18, -10, 10, g_iBrightness,
 		true, &g_pSliderBrightness);
+
+	g_SampleUI.AddCheckBox(IDC_SKYSHAPE, L"Cubemap", 30, -250, 140, 18, g_bSkyShape, 'K', false, &g_pSkyShape);
 
     g_SampleUI.SetCallback( OnGUIEvent ); 
 }
@@ -386,7 +392,11 @@ void CALLBACK OnGUIEvent( UINT nEvent, int nControlID, CDXUTControl* pControl, v
             CDXUTComboBox* pComboBox = ( CDXUTComboBox* )pControl;
             g_ePostProcessMode = ( POSTPROCESS_MODE )( int )PtrToInt( pComboBox->GetSelectedData() );
             break;
-        }        
+        }       
+		case IDC_SKYSHAPE:
+			g_bSkyShape = !g_bSkyShape;
+			Global::g_bSkyShapeIsCube = g_bSkyShape;
+			break;
     }
 
 }
@@ -438,7 +448,10 @@ HRESULT CALLBACK OnD3D11CreateDevice( ID3D11Device* pd3dDevice, const DXGI_SURFA
         SupportCaps & D3D11_FORMAT_SUPPORT_TEXTURE2D )
     {
         ID3D11ShaderResourceView* pCubeRV = nullptr;
-        V_RETURN( DXUTCreateShaderResourceViewFromFile( pd3dDevice, L"Light Probes\\uffizi_cross32.dds", &pCubeRV ) );
+        //V_RETURN( DXUTCreateShaderResourceViewFromFile( pd3dDevice, L"Light Probes\\uffizi_cross32.dds", &pCubeRV ) );
+		//V_RETURN(DXUTCreateShaderResourceViewFromFile(pd3dDevice, L".\\Media\\Light Probes\\satara_night_4k.dds", &pCubeRV));
+		V_RETURN(DXUTCreateShaderResourceViewFromFile(pd3dDevice, L".\\Media\\Light Probes\\lythwood_lounge_4k.dds", &pCubeRV));
+
 
         ID3D11Texture2D* pCubeTexture = nullptr;
         pCubeRV->GetResource( ( ID3D11Resource** )&pCubeTexture );
@@ -446,8 +459,8 @@ HRESULT CALLBACK OnD3D11CreateDevice( ID3D11Device* pd3dDevice, const DXGI_SURFA
         D3D11_TEXTURE2D_DESC desc;
         pCubeTexture->GetDesc( &desc );
 
-        if ( desc.Format != DXGI_FORMAT_R32G32B32A32_FLOAT )
-            return E_FAIL;
+       // if ( desc.Format != DXGI_FORMAT_R32G32B32A32_FLOAT )
+          //  return E_FAIL;
 
         V_RETURN( g_Skybox.OnD3D11CreateDevice( pd3dDevice, 50, pCubeTexture, pCubeRV ) );
     }
@@ -598,9 +611,8 @@ HRESULT CALLBACK OnD3D11CreateDevice( ID3D11Device* pd3dDevice, const DXGI_SURFA
     g_Camera.SetViewParams( s_vecEye, g_XMZero );
 
 	//trying to get monitor stats
-	/*
-	//auto d3dDevice = m_deviceResources->GetD3DDevice();
 
+#if 0
 	IDXGIDevice3 *pdxgiDevice;
 	pd3dDevice->QueryInterface(IID_PPV_ARGS(&pdxgiDevice));
 
@@ -624,7 +636,7 @@ HRESULT CALLBACK OnD3D11CreateDevice( ID3D11Device* pd3dDevice, const DXGI_SURFA
 	output.As(&output6);
 
 	output6->GetDesc1(&m_outputDesc);
-	*/
+#endif
 
     return S_OK;
 }
@@ -919,6 +931,8 @@ HRESULT CALLBACK OnD3D11ResizedSwapChain( ID3D11Device* pd3dDevice, IDXGISwapCha
     g_HUD.SetSize( 170, 170 );
     g_SampleUI.SetLocation( pBackBufferSurfaceDesc->Width - 170, pBackBufferSurfaceDesc->Height - 240 );
     g_SampleUI.SetSize( 150, 110 );
+
+//	pSwapChain->SetHDRMetaData(DXGI_HDR_METADATA_TYPE_HDR10, sizeof(DXGI_HDR_METADATA_HDR10), &MetaData));
 
     return S_OK;
 }
@@ -1281,7 +1295,7 @@ ID3D11Buffer* CreateAndCopyToDebugBuf( ID3D11Device* pDevice, ID3D11DeviceContex
 
 // Define this to do full pixel reduction.
 // If this is on, the same flag must also be on in ReduceTo1DCS.hlsl.
-//#define CS_FULL_PIXEL_REDUCTION 
+#define CS_FULL_PIXEL_REDUCTION 
 
 //--------------------------------------------------------------------------------------
 // Measure the average luminance of the rendered skybox in CS path
